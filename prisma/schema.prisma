@@ -1,0 +1,734 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CompanyType {
+  AGENCY
+  CLIENT
+}
+
+enum SystemRole {
+  ADMIN
+  PROJECT_MANAGER
+  SPECIALIST
+  FINANCE
+  CLIENT
+}
+
+enum ProjectMembershipRole {
+  MANAGER
+  CONTRIBUTOR
+  VIEWER
+  FINANCE_REVIEWER
+  CLIENT_VIEWER
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TimeEntryStatus {
+  RUNNING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum TransactionType {
+  INCOME
+  OUTCOME
+}
+
+enum TransactionStatus {
+  PLANNED
+  ISSUED
+  PAID
+  OVERDUE
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum AssetStatus {
+  AVAILABLE
+  IN_USE
+  IN_SERVICE
+  RETIRED
+}
+
+enum CommissionType {
+  FIXED
+  PERCENTAGE
+  MIXED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentTemplateType {
+  NDA
+  CONTRACT
+  OFFER
+  INTERNAL
+}
+
+enum DocumentInstanceStatus {
+  DRAFT
+  GENERATED
+  SENT
+  VIEWED
+  SIGNED
+  EXPIRED
+}
+
+enum NotificationChannel {
+  EMAIL
+  PORTAL
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum CollectionVisibility {
+  PRIVATE
+  TEAM
+  FINANCE_ONLY
+  ADMIN_ONLY
+}
+
+enum FilePurpose {
+  TASK_ATTACHMENT
+  CLIENT_UPLOAD
+  DOCUMENT
+  ONBOARDING
+  OTHER
+}
+
+enum AuditSeverity {
+  INFO
+  WARN
+  CRITICAL
+}
+
+model Company {
+  id           String    @id @default(uuid())
+  type         CompanyType
+  name         String
+  slug         String    @unique
+  status       String    @default("ACTIVE")
+  website      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  contacts              Contact[]
+  clientUsers           User[]                   @relation("ClientUsers")
+  clientProjects        Project[]                @relation("ClientProjects")
+  financialTransactions FinancialTransaction[]
+  leadsConverted        Lead[]                   @relation("LeadConvertedClient")
+  documentInstances     DocumentInstance[]
+  onboardingItems       OnboardingItem[]
+  uploadedFiles         UploadedFile[]
+  reportSnapshots       ClientReportSnapshot[]
+  notifications         Notification[]
+  secrets               Secret[]
+
+  @@index([type])
+}
+
+model Contact {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  email       String
+  phone       String?
+  position    String?
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  name            String
+  role            SystemRole
+  passwordHash    String
+  isActive        Boolean    @default(true)
+  clientCompanyId String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  clientCompany Company? @relation("ClientUsers", fields: [clientCompanyId], references: [id], onDelete: SetNull)
+
+  memberships              ProjectMembership[]
+  createdProjects          Project[]                @relation("ProjectCreator")
+  assignedTasks            Task[]                   @relation("TaskAssignee")
+  createdTasks             Task[]                   @relation("TaskCreator")
+  taskComments             TaskComment[]
+  taskFiles                TaskFile[]
+  timeEntries              TimeEntry[]              @relation("TimeEntryAuthor")
+  approvedTimeEntries      TimeEntry[]              @relation("TimeEntryApprover")
+  createdTransactions      FinancialTransaction[]   @relation("TransactionCreator")
+  createdLeads             Lead[]                   @relation("LeadCreator")
+  responsibleAssets        Asset[]                  @relation("AssetResponsible")
+  proposedCommissions      CommissionRule[]         @relation("CommissionProposedBy")
+  approvedCommissions      CommissionRule[]         @relation("CommissionApprovedBy")
+  commissionAllocations    CommissionAllocation[]
+  createdSecrets           Secret[]                 @relation("SecretCreator")
+  secretAccessLogs         SecretAccessLog[]
+  createdTemplates         DocumentTemplate[]       @relation("TemplateCreator")
+  templateVersions         DocumentTemplateVersion[]
+  createdDocumentInstances DocumentInstance[]       @relation("DocumentInstanceCreator")
+  createdCollections       KnowledgeCollection[]
+  createdKnowledgeDocs     KnowledgeDocument[]      @relation("KnowledgeDocCreator")
+  updatedKnowledgeDocs     KnowledgeDocument[]      @relation("KnowledgeDocUpdater")
+  notificationRecipients   Notification[]
+  uploadedFiles            UploadedFile[]
+  auditLogs                AuditLog[]               @relation("AuditActor")
+
+  @@index([role])
+  @@index([clientCompanyId])
+}
+
+model Project {
+  id              String        @id @default(uuid())
+  name            String
+  description     String?
+  status          ProjectStatus @default(PLANNING)
+  services        Json?
+  startDate       DateTime?
+  endDate         DateTime?
+  clientCompanyId String
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  clientCompany Company @relation("ClientProjects", fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  createdBy     User    @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  memberships           ProjectMembership[]
+  tasks                 Task[]
+  timeEntries           TimeEntry[]
+  financialTransactions FinancialTransaction[]
+  assets                Asset[]
+  commissionRules       CommissionRule[]
+  secrets               Secret[]
+  documentInstances     DocumentInstance[]
+  onboardingItems       OnboardingItem[]
+  uploadedFiles         UploadedFile[]
+  reportSnapshots       ClientReportSnapshot[]
+  leadsConverted        Lead[]                  @relation("LeadConvertedProject")
+
+  @@index([clientCompanyId])
+  @@index([status])
+}
+
+model ProjectMembership {
+  id        String                @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectMembershipRole
+  createdAt DateTime              @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Task {
+  id              String       @id @default(uuid())
+  projectId       String
+  title           String
+  description     String?
+  internalNotes   String?
+  status          TaskStatus   @default(TODO)
+  priority        TaskPriority @default(MEDIUM)
+  deadline        DateTime?
+  assigneeId      String?
+  createdById     String
+  visibleToClient Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee  User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User    @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  comments       TaskComment[]
+  checklistItems TaskChecklistItem[]
+  files          TaskFile[]
+  timeEntries    TimeEntry[]
+
+  @@index([projectId, status])
+  @@index([assigneeId])
+  @@index([visibleToClient])
+}
+
+model TaskComment {
+  id         String   @id @default(uuid())
+  taskId      String
+  userId      String
+  body        String
+  isInternal  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+}
+
+model TaskChecklistItem {
+  id        String   @id @default(uuid())
+  taskId     String
+  label      String
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TaskFile {
+  id             String   @id @default(uuid())
+  taskId         String
+  uploadedById   String
+  fileName       String
+  filePath       String
+  isClientVisible Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+}
+
+model TimeEntry {
+  id              String          @id @default(uuid())
+  projectId        String
+  taskId           String?
+  userId           String
+  startedAt        DateTime
+  endedAt          DateTime?
+  durationMinutes  Int?
+  description      String?
+  activityType     String?
+  status           TimeEntryStatus @default(SUBMITTED)
+  visibleToClient  Boolean         @default(false)
+  approvedById     String?
+  publishedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task       Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user       User    @relation("TimeEntryAuthor", fields: [userId], references: [id], onDelete: Restrict)
+  approvedBy User?   @relation("TimeEntryApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([userId])
+  @@index([visibleToClient])
+}
+
+model FinancialCategory {
+  id        String          @id @default(uuid())
+  name      String          @unique
+  type      TransactionType
+  createdAt DateTime        @default(now())
+
+  transactions FinancialTransaction[]
+}
+
+model FinancialTransaction {
+  id              String            @id @default(uuid())
+  type            TransactionType
+  categoryId      String
+  projectId       String?
+  clientCompanyId String?
+  amount          Decimal           @db.Decimal(12, 2)
+  currency        String            @default("EUR")
+  status          TransactionStatus @default(PLANNED)
+  dueDate         DateTime?
+  note            String?
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  category      FinancialCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  project       Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  clientCompany Company?          @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  createdBy     User              @relation("TransactionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([clientCompanyId])
+  @@index([status])
+}
+
+model Lead {
+  id                 String    @id @default(uuid())
+  companyName        String
+  contactName        String
+  contactEmail       String
+  contactPhone       String?
+  source             String?
+  stage              LeadStage @default(NEW)
+  nextStep           String?
+  reminderAt         DateTime?
+  notes              String?
+  convertedClientId  String?
+  convertedProjectId String?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  convertedClient  Company? @relation("LeadConvertedClient", fields: [convertedClientId], references: [id], onDelete: SetNull)
+  convertedProject Project? @relation("LeadConvertedProject", fields: [convertedProjectId], references: [id], onDelete: SetNull)
+  createdBy        User     @relation("LeadCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([stage])
+}
+
+model Asset {
+  id                String      @id @default(uuid())
+  name              String
+  category          String
+  serialNumber      String      @unique
+  status            AssetStatus @default(AVAILABLE)
+  location          String?
+  notes             String?
+  services          Json?
+  responsibleUserId String?
+  projectId         String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  responsibleUser User?    @relation("AssetResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([projectId])
+}
+
+model CommissionRule {
+  id             String         @id @default(uuid())
+  projectId      String
+  name           String
+  type           CommissionType
+  fixedAmount    Decimal?       @db.Decimal(12, 2)
+  percentage     Decimal?       @db.Decimal(5, 2)
+  approvalStatus ApprovalStatus @default(PENDING)
+  proposedById   String
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  proposedBy User    @relation("CommissionProposedBy", fields: [proposedById], references: [id], onDelete: Restrict)
+  approvedBy User?   @relation("CommissionApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  allocations CommissionAllocation[]
+
+  @@index([projectId])
+  @@index([approvalStatus])
+}
+
+model CommissionAllocation {
+  id                String         @id @default(uuid())
+  ruleId            String
+  participantUserId String
+  amount            Decimal?       @db.Decimal(12, 2)
+  percentage        Decimal?       @db.Decimal(5, 2)
+  status            ApprovalStatus @default(PENDING)
+  notes             String?
+  createdAt         DateTime       @default(now())
+
+  rule            CommissionRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  participantUser User           @relation(fields: [participantUserId], references: [id], onDelete: Restrict)
+
+  @@index([ruleId])
+}
+
+model Secret {
+  id              String   @id @default(uuid())
+  projectId        String
+  clientCompanyId  String?
+  name             String
+  username         String?
+  encryptedValue   String
+  iv               String
+  authTag          String
+  description      String?
+  lastRotatedAt    DateTime?
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientCompany Company? @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  createdBy     User     @relation("SecretCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  accessLogs SecretAccessLog[]
+
+  @@index([projectId])
+  @@index([clientCompanyId])
+}
+
+model SecretAccessLog {
+  id        String   @id @default(uuid())
+  secretId   String
+  userId     String
+  action     String
+  reason     String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([secretId])
+}
+
+model DocumentTemplate {
+  id                                   String               @id @default(uuid())
+  name                                 String
+  type                                 DocumentTemplateType
+  content                              String               @db.Text
+  version                              Int                  @default(1)
+  isActive                             Boolean              @default(true)
+  requiresNdaSigned                    Boolean              @default(false)
+  includesServiceConfidentialityClause Boolean              @default(false)
+  includesDisclosurePenaltyClause      Boolean              @default(false)
+  createdById                          String
+  createdAt                            DateTime             @default(now())
+  updatedAt                            DateTime             @updatedAt
+
+  createdBy User @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  versions  DocumentTemplateVersion[]
+  instances DocumentInstance[]
+
+  @@index([type])
+}
+
+model DocumentTemplateVersion {
+  id          String   @id @default(uuid())
+  templateId  String
+  version     Int
+  content     String   @db.Text
+  changeNote  String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  template  DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, version])
+}
+
+model DocumentInstance {
+  id               String                 @id @default(uuid())
+  templateId       String
+  projectId        String
+  clientCompanyId  String
+  title            String
+  content          String                 @db.Text
+  status           DocumentInstanceStatus @default(GENERATED)
+  generatedData    Json?
+  publishedToClient Boolean               @default(false)
+  requiresNdaSigned Boolean               @default(false)
+  createdById      String
+  sentAt           DateTime?
+  viewedAt         DateTime?
+  signedAt         DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  template      DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientCompany Company          @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  createdBy     User             @relation("DocumentInstanceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([clientCompanyId])
+  @@index([status])
+}
+
+model KnowledgeCollection {
+  id          String               @id @default(uuid())
+  name        String
+  description String?
+  visibility  CollectionVisibility @default(TEAM)
+  createdById String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  documents KnowledgeDocument[]
+}
+
+model KnowledgeDocument {
+  id            String   @id @default(uuid())
+  collectionId  String
+  title         String
+  content       String   @db.Text
+  version       Int      @default(1)
+  isSensitive   Boolean  @default(false)
+  createdById   String
+  updatedById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  collection KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdBy  User                @relation("KnowledgeDocCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy  User                @relation("KnowledgeDocUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([collectionId])
+}
+
+model Notification {
+  id         String             @id @default(uuid())
+  userId     String?
+  companyId  String?
+  channel    NotificationChannel
+  type       String
+  subject    String
+  body       String
+  status     NotificationStatus @default(PENDING)
+  metadata   Json?
+  sentAt     DateTime?
+  createdAt  DateTime           @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+model ClientReportSnapshot {
+  id              String   @id @default(uuid())
+  clientCompanyId String
+  projectId       String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  sales           Decimal? @db.Decimal(12, 2)
+  agencyCost      Decimal? @db.Decimal(12, 2)
+  adsCost         Decimal? @db.Decimal(12, 2)
+  socialMetrics   Json?
+  notes           String?
+  publishedToClient Boolean @default(false)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clientCompany Company  @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([clientCompanyId])
+}
+
+model OnboardingItem {
+  id              String   @id @default(uuid())
+  clientCompanyId String
+  projectId       String?
+  title           String
+  description     String?
+  status          String   @default("TODO")
+  dueDate         DateTime?
+  isClientVisible Boolean  @default(true)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clientCompany Company  @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([clientCompanyId])
+}
+
+model UploadedFile {
+  id              String     @id @default(uuid())
+  fileName        String
+  originalName    String
+  filePath        String
+  mimeType        String
+  sizeBytes       Int
+  purpose         FilePurpose
+  projectId       String?
+  clientCompanyId String?
+  uploadedById    String
+  isClientVisible Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  clientCompany Company? @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([clientCompanyId])
+}
+
+model AuditLog {
+  id          String        @id @default(uuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  severity    AuditSeverity @default(INFO)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+}
